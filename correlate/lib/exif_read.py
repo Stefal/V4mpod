@@ -232,7 +232,7 @@ class ExifRead:
             microseconds = datetime.timedelta(
                 microseconds=int((eval_frac(t.values[2]) % 1) * 1e6))
             gps_time += microseconds
-        return gps_time
+        return gps_time.replace(tzinfo=datetime.timezone.utc)
 
     def extract_exif(self):
         '''

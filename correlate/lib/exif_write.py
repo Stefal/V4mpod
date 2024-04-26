@@ -79,6 +79,19 @@ class ExifEdit(object):
         self._ef["GPS"][piexif.GPSIFD.GPSDOP] = (
             int(abs(dop) * precision), precision)
 
+    def add_gps_horizontal_error(self, horizontal_error, precision=1000):
+        """ Add GPSHPositioningError (float)"""
+        self._ef["GPS"][piexif.GPSIFD.GPSHPositioningError] = (
+            int(round(horizontal_error,3) * precision), precision)
+
+    def add_gps_differential(self, differential_value):
+        """ Add GPSDifferential (int)"""
+        self._ef["GPS"][piexif.GPSIFD.GPSDifferential] = int(differential_value)
+
+    def add_gps_datum(self, datum):
+        """ Add GPSMapDatum """
+        self._ef["GPS"][piexif.GPSIFD.GPSMapDatum] = datum
+    
     def add_altitude(self, altitude, precision=100):
         """Add altitude (pre is the precision)."""
         ref = 0 if altitude > 0 else 1

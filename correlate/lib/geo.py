@@ -152,7 +152,7 @@ def interpolate_lat_lon(points, t, max_dt=1):
     '''
     Return interpolated lat, lon and compass bearing for time t.
 
-    Points is a list of tuples (time, lat, lon, elevation), t a datetime object.
+    Points is a list of tuples (time, lat, lon, elevation, hor_err, gps_quality), t a datetime object.
     '''
     # find the enclosing points in sorted list
     if (t <= points[0][0]) or (t >= points[-1][0]):
@@ -206,7 +206,11 @@ def interpolate_lat_lon(points, t, max_dt=1):
     if before[3] is not None and after[3] is not None:
         ele = (before[3] * dt_after + after[3] *
                dt_before) / (dt_before + dt_after)
+        hor_err = min(before[4], after[4])
+        gps_quality = min(before[5], after[5])
     else:
         ele = None
+        hor_err = None
+        gps_distance = None
 
-    return lat, lon, bearing, ele
+    return lat, lon, bearing, ele, hor_err, gps_quality
