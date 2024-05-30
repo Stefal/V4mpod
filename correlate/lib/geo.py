@@ -148,42 +148,44 @@ def normalize_bearing(bearing, check_hex=False):
     return bearing
 
 
-def interpolate_lat_lon(points, t, max_dt=1):
+def interpolate_lat_lon(points, t, max_dt=1, max_points_dt=None):
     '''
     Return interpolated lat, lon and compass bearing for time t.
 
     Points is a list of tuples (time, lat, lon, elevation, hor_err, gps_quality), t a datetime object.
+    max_dt is
+    max_point_dt is the max time allowed between two points.
     '''
     # find the enclosing points in sorted list
-    if (t <= points[0][0]) or (t >= points[-1][0]):
-        if t <= points[0][0]:
-            dt = abs((points[0][0] - t).total_seconds())
+    if (t <= points[0].timestamp) or (t >= points[-1].timestamp):
+        if t <= points[0].timestamp:
+            dt = abs((points[0].timestamp - t).total_seconds())
         else:
-            dt = (t - points[-1][0]).total_seconds()
+            dt = (t - points[-1].timestamp).total_seconds()
         if dt > max_dt:
             raise ValueError("time t not in scope of gpx file")
         else:
             print((
                 "time t not in scope of gpx file by {} seconds, extrapolating...".format(dt)))
 
-        if t < points[0][0]:
+        if t < points[0].timestamp:
             before = points[0]
             after = points[1]
         else:
             before = points[-2]
             after = points[-1]
-        bearing = compute_bearing(before[1], before[2], after[1], after[2])
+        bearing = compute_bearing(before.lat, before.long, after.lat, after.long)
 
-        if t == points[0][0]:
+        if t == points[0].timestamp:
             x = points[0]
             return (x[1], x[2], bearing, x[3])
 
-        if t == points[-1][0]:
+        if t == points[-1].timestamp:
             x = points[-1]
             return (x[1], x[2], bearing, x[3])
     else:
         for i, point in enumerate(points):
-            if t < point[0]:
+            if t < point.timestamp:
                 if i > 0:
                     before = points[i - 1]
                 else:
@@ -192,25 +194,30 @@ def interpolate_lat_lon(points, t, max_dt=1):
                 break
 
     # time diff
-    dt_before = (t - before[0]).total_seconds()
-    dt_after = (after[0] - t).total_seconds()
+    dt_before = (t - before.timestamp).total_seconds()
+    dt_after = (after.timestamp - t).total_seconds()
+
+    if max_points_dt is not None:
+        if dt_before + dt_after > max_points_dt:
+            # Image Accurracy can't be good.
+            raise ValueError("Too much time between the two enclosing points: {} - {} - dt: {}".format(before.timestamp, after.timestamp, dt_before + dt_after))
 
     # simple linear interpolation
-    lat = (before[1] * dt_after + after[1] *
+    lat = (before.lat * dt_after + after.lat *
            dt_before) / (dt_before + dt_after)
-    lon = (before[2] * dt_after + after[2] *
+    lon = (before.long * dt_after + after.long *
            dt_before) / (dt_before + dt_after)
 
-    bearing = compute_bearing(before[1], before[2], after[1], after[2])
+    bearing = compute_bearing(before.lat, before.long, after.lat, after.long)
 
-    if before[3] is not None and after[3] is not None:
-        ele = (before[3] * dt_after + after[3] *
+    if before.alt is not None and after.alt is not None:
+        ele = (before.alt * dt_after + after.alt *
                dt_before) / (dt_before + dt_after)
-        hor_err = min(before[4], after[4])
-        gps_quality = min(before[5], after[5])
+        hor_err = min(before.horizontal_error, after.horizontal_error)
+        #print("t: {} - hor-err prev: {} - hor-err post: {}".format(t, before[4], after[4]))
+        gps_quality = min(before.gps_quality, after.gps_quality)
     else:
         ele = None
         hor_err = None
         gps_distance = None
-
     return lat, lon, bearing, ele, hor_err, gps_quality

@@ -21,6 +21,7 @@ from lib.exif_read import ExifRead as EXIF
 from lib.exif_write import ExifEdit
 from lib.geo import interpolate_lat_lon
 import lib.gps_parser as gps_parser
+import lib.nmea_filter as nmea_filter
 
 logfile_name = "correlate.log"
 # source for logging : http://sametmax.com/ecrire-des-logs-en-python/
@@ -129,12 +130,14 @@ def write_metadata(image_lists):
                 
             #if image.Ele != "" and image.Ele is not None:
             #    metadata.add_altitude(image.Ele)
-            
+            if image.Gps_Horizontal_error is None and image.Gps_quality is None:
+                print('Skipping ', image.path)
+                continue
             if image.Gps_Horizontal_error is not None and image.Gps_Horizontal_error != "":
                 metadata.add_gps_horizontal_error(image.Gps_Horizontal_error)
-            if image.Gps_quality >= gps_parser.GpsQuality.DGPS:
+            if image.Gps_quality is not None and image.Gps_quality >= gps_parser.GpsQuality.DGPS:
                 metadata.add_gps_differential(1)
-            if image.Gps_quality < gps_parser.GpsQuality.DGPS:
+            if image.Gps_quality is not None and image.Gps_quality < gps_parser.GpsQuality.DGPS:
                 metadata.add_gps_differential(0)
             metadata.add_gps_datum("EPSG:9777") #RGF93
 
@@ -178,8 +181,9 @@ def geotag_from_gpx(piclist, gpx_file, offset_time=0, offset_bearing=0, offset_d
     # read gpx file to get track locations
     #if gpx_file.lower().endswith(".gpx"):
     #    gpx = gps_parser.get_lat_lon_time_from_gpx(gpx_file)
-    elif gpx_file.lower().endswith(".nmea"):
-        gpx = gps_parser.get_lat_lon_time_from_nmea(gpx_file)
+    if gpx_file.lower().endswith(".nmea"):
+        filtered_file = nmea_filter.filter_nmea(gpx_file)
+        gpx = gps_parser.get_lat_lon_time_from_nmea(filtered_file.fileno())
     elif gpx_file.lower().endswith(".pos"):
         gpx = gps_parser.get_lat_lon_time_from_rtklib_pos(gpx_file)
     else:
@@ -187,7 +191,6 @@ def geotag_from_gpx(piclist, gpx_file, offset_time=0, offset_bearing=0, offset_d
         sys.exit()
 
     #for piclist, offset_bearing in zip(piclists, offset_bearings):
-
     start_time = time.time()
     print("===\nStarting geotagging of {0} images using {1}.\n===".format(len(piclist), gpx_file))
 
@@ -203,11 +206,12 @@ def geotag_from_gpx(piclist, gpx_file, offset_time=0, offset_bearing=0, offset_d
             t = pic.Gps_DateTime
 
         try:
-            lat, lon, bearing, elevation, hor_err, gps_quality = interpolate_lat_lon(gpx, t)
+            lat, lon, bearing, elevation, hor_err, gps_quality = interpolate_lat_lon(gpx, t, max_dt=0, max_points_dt=1)
             #removed already consumed gpx points
             cp_gpx = list(gpx)
+            gpx_length = len(gpx)
             for j,point in enumerate(cp_gpx):
-                if cp_gpx[j][0] < t and cp_gpx[j+1][0] < t:
+                if j+2 < gpx_length and cp_gpx[j].timestamp < t and cp_gpx[j+1].timestamp < t:
                     gpx.pop(0)
                 else:
                     break
@@ -329,10 +333,10 @@ if __name__ == '__main__':
     print("=" * 80)
 
     if args.write_exif:
-        user_input = input("Write the new exif data in the pictures? (y or n) : ")
-        if user_input == "y":
+        #user_input = input("Write the new exif data in the pictures? (y or n) : ")
+        #if user_input == "y":
             #remove pictures without lat/long
             #cam_group.filter_images(latlon = True)
-            write_metadata([piclist])
+        write_metadata([piclist])
 
 print("End of correlation")

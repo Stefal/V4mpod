@@ -30,6 +30,17 @@ class PointInfo:
         self.gps_quality = None
         self.horizontal_error = None
         self.pdop : int
+    def __str__(self):
+        return str("timestamp: {} - Latitude: {} - Longitude: {} - Altitude: {} - Gps Quality: {} - Hor. Error: {} - Pdop: {}".format(
+                self.timestamp, \
+                self.lat, \
+                self.long, \
+                self.alt, \
+                self.gps_quality, \
+                self.horizontal_error, \
+                self.pdop,
+                    )
+                )
 
 class GpsQuality(IntEnum):
     INVALID = 0
@@ -104,13 +115,15 @@ def get_lat_lon_time_from_nmea(nmea_file, local_time=True):
         lines = [l.rstrip("\n\r") for l in lines]
 
     # Get initial date
+    date = None
     for l in lines:
         if any(rmc in l for rmc in rmc_Talker_id):
             data = pynmea2.parse(l, check=False)
             date = data.datetime.date()
             break
-        else:
-            raise(Exception)
+        
+    if date is None:
+            raise(Exception, "No initial date found")
 
     # Parse GPS trace
     points = []
@@ -142,21 +155,21 @@ def get_lat_lon_time_from_nmea(nmea_file, local_time=True):
         #if timestamp and lat and lon and alt :
         #    points.append((timestamp, lat, lon, alt, hor_err, gps_quality))
         if timestamp != prev_timestamp:
-            print("prev {} - new {}".format(prev_timestamp, timestamp))
+            #print("prev {} - new {}".format(prev_timestamp, timestamp))
             if new_point.lat != None and lat != None:
                 points.append(deepcopy(new_point))
-                print("Reset new point")
+                #print("Reset new point")
                 new_point.reset()
                 new_point.timestamp = timestamp
                 new_point.lat = lat
                 new_point.long = long
                 new_point.alt = alt
                 new_point.gps_quality = gps_quality
-                print("après reset, newpoint.lat ", new_point.lat)
+                #print("après reset, newpoint.lat ", new_point.lat)
                 lat = long = alt = alt = gps_quality = horizontal_error = pdop = None
             prev_timestamp = timestamp
             continue
-        print("point lat: ", new_point.lat)
+        #print("point lat: ", new_point.lat)
         if timestamp != None : new_point.timestamp = timestamp
         if lat != None: new_point.lat = lat
         if long != None: new_point.long = long
@@ -164,35 +177,34 @@ def get_lat_lon_time_from_nmea(nmea_file, local_time=True):
         if gps_quality != None : new_point.gps_quality = gps_quality
         if horizontal_error != None : new_point.horizontal_error = horizontal_error
         if pdop != None : new_point.pdop = pdop
-        print("len points: ", len(points))
+        #print("len points: ", len(points))
     #push last point
     if new_point.lat != None:
-        print("ajout dernier point")
-        points.append(deepcopy(new_point))        
-    #points.sort()
+        points.append(deepcopy(new_point))     
+    points.sort(key=lambda point: point.timestamp)
     return points
 
 def get_lat_lon_time_from_rtklib_pos(pos_file, local_time=True):
     #find header
     with open(pos_file, 'r') as f:
         while True:
-         line = f.readline()
-         if not line:
-             break
-         if line.startswith("%  "):
-             header = line[3:].split()
-             timestamp_idx = header.index("DateTime") # use two list member
-             lat_idx = header.index("latitude(deg)")
-             long_idx = header.index("longitude(deg)")
-             ele_idx = header.index("height(m)")
-             quality_idx = header.index("Q")
-             sat_nbr_idx = header.index("ns")
-             sdn_idx = header.index("sdn(m)")
-             sde_idx = header.index("sde(m)")
-             sdu_idx = header.index("sdu(m)")
-             age_idx = header.index("age(s)")
-             ratio_idx = header.index("ratio")
-             break
+            line = f.readline()
+            if not line:
+                break
+            if line.startswith("%  "):
+                header = line[3:].split()
+                timestamp_idx = header.index("DateTime") # use two list member
+                lat_idx = header.index("latitude(deg)")
+                long_idx = header.index("longitude(deg)")
+                ele_idx = header.index("height(m)")
+                quality_idx = header.index("Q")
+                sat_nbr_idx = header.index("ns")
+                sdn_idx = header.index("sdn(m)")
+                sde_idx = header.index("sde(m)")
+                sdu_idx = header.index("sdu(m)")
+                age_idx = header.index("age(s)")
+                ratio_idx = header.index("ratio")
+                break
     #parse pos file
     with open(pos_file, 'r') as f:
         lines = f.readlines()
@@ -200,24 +212,25 @@ def get_lat_lon_time_from_rtklib_pos(pos_file, local_time=True):
 
     points = []
     for line in lines:
+        new_point = PointInfo()
         sline = line.split()
         sline[timestamp_idx:timestamp_idx + 2] = [' '.join(sline[timestamp_idx:timestamp_idx + 2])]
         try:
             timestamp = datetime.datetime.strptime(sline[timestamp_idx], "%Y/%m/%d %H:%M:%S.%f")
-            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
-            lat = float(sline[lat_idx])
-            long = float(sline[long_idx])
-            alt = float(sline[ele_idx])
+            new_point.timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+            new_point.lat = float(sline[lat_idx])
+            new_point.long = float(sline[long_idx])
+            new_point.alt = float(sline[ele_idx])
             max_hor_err = max(float(sline[sdn_idx]), float(sline[sde_idx]))
-            hor_err = max_hor_err if max_hor_err > 0 else None
-            gps_quality = pos_gps_qual.get(sline[quality_idx], 'invalid')
+            new_point.horizontal_error = max_hor_err if max_hor_err > 0 else None
+            new_point.gps_quality = pos_gps_qual.get(sline[quality_idx], 'invalid')
             # TODO add Q for differential or not. Try yo use the same value as nmea
-            if timestamp and lat and long and alt:
-                points.append((timestamp, lat, long, alt, hor_err, gps_quality))
+            if new_point.timestamp and new_point.lat and new_point.long and new_point.alt:
+                points.append(new_point)
         except Exception as e:
-            print("Skipping pos point",e)
+            print("Skipping pos point: ",e)
     
-    points.sort()
+    points.sort(key=lambda point: point.timestamp)
     return points
 
 
